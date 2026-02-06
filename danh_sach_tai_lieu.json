@@ -18,14 +18,5 @@
         "audio_url": "https://raw.githubusercontent.com/snnmt/radiokhuyennong/main/amthanh/testamthanhkythuatcanhtacbuoi.mp3",
         "image_url": "https://raw.githubusercontent.com/snnmt/radiokhuyennong/main/hinhanh/fruits18.jpg",
         "last_updated": "24/01/2026"
-    },
-    {
-        "id": 2,
-        "title": "Phòng trị bệnh trên Tôm thẻ",
-        "category": "Thủy sản",
-        "description": "Các biện pháp phòng ngừa bệnh đốm trắng, gan tụy trên tôm.",
-        "pdf_url": "https://raw.githubusercontent.com/snnmt/radiokhuyennong/main/thuysan/benh_tom_the.pdf",
-        "audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-        "last_updated": "24/01/2026"
     }
 ]
