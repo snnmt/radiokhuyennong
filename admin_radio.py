@@ -89,7 +89,7 @@ def push_json_to_github(data_list, sha, message):
 tab1, tab2 = st.tabs(["➕ ĐĂNG BÀI MỚI", "🛠️ QUẢN LÝ & CHỈNH SỬA"])
 
 # =================================================================================
-# TAB 1: ĐĂNG BÀI MỚI (Code cũ)
+# TAB 1: ĐĂNG BÀI MỚI
 # =================================================================================
 with tab1:
     st.subheader("Soạn Thảo Bài Viết Mới")
@@ -112,31 +112,62 @@ with tab1:
 
         content_text = st.text_area("Nội dung bài viết (Text)", height=200)
         
-        btn_submit = st.form_submit_button("🚀 PHÁT SÓNG NGAY")
+        # --- KHU VỰC NÚT BẤM (ĐÃ THÊM NÚT NGHE THỬ) ---
+        st.markdown("---")
+        col_btn1, col_btn2 = st.columns(2)
+        
+        with col_btn1:
+            btn_preview = st.form_submit_button("🎧 NGHE THỬ TRƯỚC")
+        
+        with col_btn2:
+            btn_submit = st.form_submit_button("🚀 PHÁT SÓNG NGAY")
 
+        # --- XỬ LÝ SỰ KIỆN ---
+        
+        # 1. Xử lý Nghe thử
+        if btn_preview:
+            if not content_text:
+                st.warning("⚠️ Chưa có nội dung để đọc!")
+            else:
+                st.info("🎙️ Đang tạo bản nghe thử...")
+                preview_filename = "preview_temp.mp3"
+                asyncio.run(generate_audio(content_text, preview_filename, voice_code))
+                
+                # Đọc file để phát
+                with open(preview_filename, "rb") as f:
+                    audio_bytes = f.read()
+                st.audio(audio_bytes, format="audio/mp3")
+                st.success("Bấm Play ở trên để nghe. File này chưa được lưu lên GitHub.")
+                
+                # Xóa file tạm
+                os.remove(preview_filename)
+
+        # 2. Xử lý Phát sóng (Upload thật)
         if btn_submit:
             if not title or not content_text:
-                st.warning("Thiếu tiêu đề hoặc nội dung!")
+                st.warning("⚠️ Thiếu tiêu đề hoặc nội dung!")
             else:
                 status = st.status("Đang xử lý...", expanded=True)
                 repo = get_github_repo()
                 
                 # Upload files
-                status.write("Upload file...")
+                status.write("Upload file đính kèm...")
                 final_pdf = upload_file_to_github(pdf_file, FOLDER_DOCS, repo) if pdf_file else ""
                 final_img = upload_file_to_github(image_file, FOLDER_IMAGE, repo) if image_file else f"https://raw.githubusercontent.com/{REPO_NAME}/main/hinhanh/logo_mac_dinh.png"
                 
                 # Audio
-                status.write("Tạo âm thanh...")
+                status.write("Tạo & Upload âm thanh...")
                 fname_mp3 = f"radio_{int(time.time())}.mp3"
                 asyncio.run(generate_audio(content_text, fname_mp3, voice_code))
+                
                 with open(fname_mp3, "rb") as f:
                     repo.create_file(f"{FOLDER_AUDIO}{fname_mp3}", f"Audio: {title}", f.read())
+                
                 final_audio = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{FOLDER_AUDIO}{fname_mp3}"
                 os.remove(fname_mp3)
 
                 # Update JSON
-                status.write("Lưu dữ liệu...")
+                status.write("Cập nhật cơ sở dữ liệu...")
                 data, sha = get_data_from_github()
                 new_id = (max([x['id'] for x in data]) + 1) if data else 1
                 
@@ -157,33 +188,27 @@ with tab1:
 with tab2:
     st.subheader("Danh Sách Bài Viết Đang Có")
     
-    # Nút load dữ liệu thủ công để tiết kiệm request GitHub
     if st.button("🔄 Tải danh sách mới nhất từ GitHub"):
         data, _ = get_data_from_github()
         st.session_state.db_data = data
         st.rerun()
 
-    # Lấy dữ liệu từ session
     current_data = st.session_state.get("db_data", [])
 
     if not current_data:
         st.info("Chưa có dữ liệu. Vui lòng bấm nút 'Tải danh sách' ở trên.")
     else:
-        # Hiển thị bảng tóm tắt
         df = pd.DataFrame(current_data)
         st.dataframe(df[["id", "title", "category", "last_updated"]], use_container_width=True)
 
         st.markdown("---")
         st.subheader("🛠️ Thao Tác")
 
-        # Chọn bài để thao tác
         list_ids = [f"{item['id']} - {item['title']}" for item in current_data]
         selected_option = st.selectbox("Chọn bài viết muốn Sửa hoặc Xóa:", list_ids)
         
         if selected_option:
-            # Lấy ID từ chuỗi chọn
             selected_id = int(selected_option.split(" - ")[0])
-            # Tìm object tương ứng
             selected_item = next((item for item in current_data if item["id"] == selected_id), None)
 
             if selected_item:
@@ -205,42 +230,34 @@ with tab2:
                             status = st.status("Đang cập nhật...", expanded=True)
                             repo = get_github_repo()
                             
-                            # Nếu có upload ảnh mới
                             if new_image:
                                 selected_item["image_url"] = upload_file_to_github(new_image, FOLDER_IMAGE, repo)
                             
-                            # Nếu có upload PDF mới
                             if new_pdf:
                                 selected_item["pdf_url"] = upload_file_to_github(new_pdf, FOLDER_DOCS, repo)
                             
-                            # Cập nhật thông tin text
                             selected_item["title"] = new_title
                             selected_item["description"] = new_desc
                             selected_item["category"] = new_cat
                             selected_item["last_updated"] = datetime.now().strftime("%d/%m/%Y")
 
-                            # Ghi đè vào danh sách gốc và đẩy lên GitHub
-                            # Cần lấy data mới nhất trước khi push để tránh conflict
                             full_data, sha = get_data_from_github()
-                            # Tìm và thay thế trong list mới lấy về
                             for idx, item in enumerate(full_data):
                                 if item["id"] == selected_id:
                                     full_data[idx] = selected_item
                                     break
                             
                             push_json_to_github(full_data, sha, f"Edit post ID {selected_id}")
-                            st.session_state.db_data = full_data # Cập nhật local
+                            st.session_state.db_data = full_data
                             status.update(label="✅ Đã cập nhật xong!", state="complete")
                             st.success("Cập nhật thành công! Hãy bấm 'Tải danh sách' để xem thay đổi.")
 
-                # Phần XÓA BÀI VIẾT
                 st.markdown("---")
                 col_del1, col_del2 = st.columns([3, 1])
                 with col_del2:
                     if st.button("🗑️ XÓA BÀI NÀY", type="primary"):
                         with st.spinner("Đang xóa dữ liệu..."):
                             full_data, sha = get_data_from_github()
-                            # Lọc bỏ bài có ID này
                             filtered_data = [x for x in full_data if x["id"] != selected_id]
                             
                             push_json_to_github(filtered_data, sha, f"Delete post ID {selected_id}")
