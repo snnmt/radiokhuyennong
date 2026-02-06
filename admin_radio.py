@@ -30,9 +30,9 @@ async def generate_audio(text, filename, voice):
     communicate = edge_tts.Communicate(text, voice)
     await communicate.save(filename)
 
-# 2. Hàm xử lý chính
+# 2. Hàm xử lý chính (Upload)
 def process_upload(title, category, description, pdf_url_input, content_text, voice_choice, image_url_input):
-    status = st.status("⏳ Đang xử lý...", expanded=True)
+    status = st.status("⏳ Đang xử lý phát sóng...", expanded=True)
     
     # --- BƯỚC A: TẠO AUDIO ---
     status.write("🎙️ Đang chuyển văn bản thành giọng nói...")
@@ -66,26 +66,25 @@ def process_upload(title, category, description, pdf_url_input, content_text, vo
     # Tự động tăng ID
     new_id = 1
     if data_list:
-        # Lấy ID lớn nhất hiện có + 1
         max_id = max(item.get('id', 0) for item in data_list)
         new_id = max_id + 1
 
     # Link file âm thanh chuẩn
     final_audio_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{file_path_on_git}"
     
-    # Xử lý ảnh mặc định nếu để trống
+    # Xử lý ảnh mặc định
     final_image_url = image_url_input if image_url_input else f"https://raw.githubusercontent.com/{REPO_NAME}/main/hinhanh/logo_mac_dinh.png"
 
-    # --- TẠO OBJECT MỚI (Khớp 100% cấu trúc anh yêu cầu) ---
+    # Tạo Object mới
     new_item = {
         "id": new_id,
         "title": title,
         "category": category,
         "description": description,
-        "pdf_url": pdf_url_input, # Link PDF anh nhập vào
+        "pdf_url": pdf_url_input,
         "audio_url": final_audio_url,
         "image_url": final_image_url,
-        "last_updated": datetime.now().strftime("%d/%m/%Y") # Ví dụ: 24/01/2026
+        "last_updated": datetime.now().strftime("%d/%m/%Y")
     }
     
     # Chèn lên đầu danh sách
@@ -100,7 +99,7 @@ def process_upload(title, category, description, pdf_url_input, content_text, vo
     
     status.update(label="✅ ĐÃ XONG! Bài viết đã lên sóng.", state="complete", expanded=False)
     st.success(f"Đã đăng bài: {title} (ID: {new_id})")
-    st.json(new_item) # Hiển thị lại kết quả JSON vừa tạo để kiểm tra
+    st.json(new_item)
     st.balloons()
 
 # --- GIAO DIỆN FORM ---
@@ -114,12 +113,10 @@ with st.form("radio_form"):
     
     description = st.text_input("3. Mô tả ngắn", placeholder="VD: Hướng dẫn xử lý ra hoa...")
     
-    # Thêm ô nhập Link PDF
     pdf_url_input = st.text_input("4. Link tài liệu PDF (Nếu có)", placeholder="Dán link PDF từ GitHub hoặc để trống")
     
     col3, col4 = st.columns(2)
     with col3:
-        # Chọn giọng đọc
         voice_options = {"Nam (Miền Nam)": "vi-VN-NamMinhNeural", "Nữ (Miền Bắc)": "vi-VN-HoaiMyNeural"}
         voice_label = st.selectbox("5. Giọng đọc AI", list(voice_options.keys()))
         voice_code = voice_options[voice_label]
@@ -127,12 +124,38 @@ with st.form("radio_form"):
         image_url = st.text_input("6. Link ảnh minh họa", placeholder="Để trống sẽ dùng ảnh mặc định")
 
     st.markdown("---")
-    st.write("### 7. Nội dung bài viết (Để AI đọc)")
+    st.write("### 7. Nội dung bài viết (AI sẽ đọc nội dung này)")
     content_text = st.text_area("Dán văn bản vào đây:", height=300)
     
-    submitted = st.form_submit_button("🚀 BIÊN TẬP & PHÁT SÓNG")
+    # --- KHU VỰC NÚT BẤM (Chia làm 2 cột) ---
+    st.markdown("---")
+    col_btn1, col_btn2 = st.columns(2)
     
-    if submitted:
+    with col_btn1:
+        # Nút Nghe thử
+        btn_preview = st.form_submit_button("🎧 NGHE THỬ TRƯỚC")
+        
+    with col_btn2:
+        # Nút Phát sóng thật
+        btn_publish = st.form_submit_button("🚀 BIÊN TẬP & PHÁT SÓNG")
+
+    # --- XỬ LÝ SỰ KIỆN ---
+    if btn_preview:
+        if not content_text:
+            st.warning("⚠️ Chưa có nội dung để đọc!")
+        else:
+            st.info("🎙️ Đang tạo bản nghe thử...")
+            preview_file = "preview_audio.mp3"
+            asyncio.run(generate_audio(content_text, preview_file, voice_code))
+            
+            # Hiện trình phát nhạc
+            st.audio(preview_file, format="audio/mp3")
+            st.success("Bấm nút Play ở trên để nghe thử. Nếu ưng ý hãy bấm 'Phát Sóng'.")
+            
+            # Xóa file sau khi load xong (tùy chọn, streamilt có thể cần file tồn tại lúc render)
+            # os.remove(preview_file) 
+
+    if btn_publish:
         if not title or not content_text:
             st.warning("⚠️ Vui lòng nhập Tiêu đề và Nội dung!")
         else:
