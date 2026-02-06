@@ -12,13 +12,11 @@ import os
 st.set_page_config(page_title="Admin Radio Khuyến Nông", page_icon="🔒")
 
 # --- KIỂM TRA MẬT KHẨU (LOGIN SYSTEM) ---
-# Nếu chưa đăng nhập thì hiện ô nhập mật khẩu
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
 def check_password():
     try:
-        # So sánh mật khẩu nhập vào với mật khẩu trong Secrets
         if st.session_state.password_input == st.secrets["APP_PASSWORD"]:
             st.session_state.authenticated = True
         else:
@@ -30,10 +28,10 @@ if not st.session_state.authenticated:
     st.title("🔒 Đăng Nhập Hệ Thống")
     st.write("Vui lòng nhập mật khẩu quản trị để truy cập công cụ.")
     st.text_input("Mật khẩu:", type="password", key="password_input", on_change=check_password)
-    st.stop() # Dừng lại, không chạy code bên dưới nếu chưa đăng nhập
+    st.stop()
 
 # =================================================================================
-# KHI ĐÃ ĐĂNG NHẬP THÀNH CÔNG THÌ MỚI CHẠY CODE BÊN DƯỚI
+# GIAO DIỆN QUẢN TRỊ VIÊN
 # =================================================================================
 
 st.title("🌾 Công Cụ Sản Xuất Radio Tự Động")
@@ -47,7 +45,10 @@ except:
     st.error("⚠️ Chưa cấu hình GITHUB_TOKEN! Hãy vào Settings của Streamlit để thêm.")
     st.stop()
 
+# Cấu hình thư mục lưu trữ
 FOLDER_AUDIO = "amthanh/"
+FOLDER_IMAGE = "hinhanh/"
+FOLDER_DOCS = "tailieu/" # Thư mục chứa PDF
 FILE_JSON_DATA = "danh_sach_tai_lieu.json"
 
 # --- HÀM XỬ LÝ ---
@@ -57,19 +58,44 @@ async def generate_audio(text, filename, voice):
     communicate = edge_tts.Communicate(text, voice)
     await communicate.save(filename)
 
-# 2. Hàm xử lý chính (Upload)
-def process_upload(title, category, description, pdf_url_input, content_text, voice_choice, image_url_input):
-    status = st.status("⏳ Đang xử lý phát sóng...", expanded=True)
+# 2. Hàm Upload file lên GitHub (Dùng chung cho Ảnh và PDF)
+def upload_file_to_github(file_obj, folder_path, repo):
+    # Tạo tên file mới dựa trên thời gian để tránh trùng lặp
+    file_ext = file_obj.name.split(".")[-1]
+    new_filename = f"upload_{int(time.time())}.{file_ext}"
+    git_path = f"{folder_path}{new_filename}"
     
-    # --- BƯỚC A: TẠO AUDIO ---
+    # Đọc dữ liệu file
+    content = file_obj.getvalue()
+    
+    # Upload
+    repo.create_file(git_path, f"Upload file: {new_filename}", content)
+    
+    # Trả về link raw
+    return f"https://raw.githubusercontent.com/{REPO_NAME}/main/{git_path}"
+
+# 3. Hàm xử lý chính (Biên tập & Phát sóng)
+def process_upload(title, category, description, pdf_file, content_text, voice_choice, image_file):
+    status = st.status("⏳ Đang xử lý phát sóng...", expanded=True)
+    g = Github(GITHUB_TOKEN)
+    repo = g.get_repo(REPO_NAME)
+    
+    # --- BƯỚC A: XỬ LÝ FILE ĐÍNH KÈM (PDF & ẢNH) ---
+    final_pdf_url = ""
+    final_image_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/hinhanh/logo_mac_dinh.png"
+    
+    if pdf_file is not None:
+        status.write(f"📄 Đang upload tài liệu PDF: {pdf_file.name}...")
+        final_pdf_url = upload_file_to_github(pdf_file, FOLDER_DOCS, repo)
+        
+    if image_file is not None:
+        status.write(f"🖼️ Đang upload ảnh minh họa: {image_file.name}...")
+        final_image_url = upload_file_to_github(image_file, FOLDER_IMAGE, repo)
+    
+    # --- BƯỚC B: TẠO AUDIO ---
     status.write("🎙️ Đang chuyển văn bản thành giọng nói...")
     filename_mp3 = f"radio_{int(time.time())}.mp3"
     asyncio.run(generate_audio(content_text, filename_mp3, voice_choice))
-    
-    # --- BƯỚC B: KẾT NỐI GITHUB ---
-    status.write("🚀 Đang kết nối GitHub...")
-    g = Github(GITHUB_TOKEN)
-    repo = g.get_repo(REPO_NAME)
     
     # --- BƯỚC C: UPLOAD MP3 ---
     status.write(f"⬆️ Đang tải file âm thanh lên...")
@@ -78,6 +104,7 @@ def process_upload(title, category, description, pdf_url_input, content_text, vo
     
     file_path_on_git = f"{FOLDER_AUDIO}{filename_mp3}"
     repo.create_file(file_path_on_git, f"Add audio: {title}", content)
+    final_audio_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{file_path_on_git}"
     
     # --- BƯỚC D: CẬP NHẬT JSON ---
     status.write("📝 Đang cập nhật danh sách bài viết...")
@@ -87,8 +114,8 @@ def process_upload(title, category, description, pdf_url_input, content_text, vo
         json_str = base64.b64decode(file_content.content).decode("utf-8")
         data_list = json.loads(json_str)
     except Exception as e:
-        st.error(f"Lỗi đọc file JSON: {e}")
-        st.stop()
+        # Nếu chưa có file json thì tạo list rỗng
+        data_list = []
 
     # Tự động tăng ID
     new_id = 1
@@ -96,17 +123,13 @@ def process_upload(title, category, description, pdf_url_input, content_text, vo
         max_id = max(item.get('id', 0) for item in data_list)
         new_id = max_id + 1
 
-    # Link chuẩn
-    final_audio_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{file_path_on_git}"
-    final_image_url = image_url_input if image_url_input else f"https://raw.githubusercontent.com/{REPO_NAME}/main/hinhanh/logo_mac_dinh.png"
-
     # Tạo Object mới
     new_item = {
         "id": new_id,
         "title": title,
         "category": category,
         "description": description,
-        "pdf_url": pdf_url_input,
+        "pdf_url": final_pdf_url,
         "audio_url": final_audio_url,
         "image_url": final_image_url,
         "last_updated": datetime.now().strftime("%d/%m/%Y")
@@ -119,15 +142,18 @@ def process_upload(title, category, description, pdf_url_input, content_text, vo
     updated_json = json.dumps(data_list, ensure_ascii=False, indent=4)
     repo.update_file(file_content.path, f"Add post ID {new_id}: {title}", updated_json, file_content.sha)
     
-    # Xóa file tạm
+    # Xóa file tạm mp3
     os.remove(filename_mp3)
     
     status.update(label="✅ ĐÃ XONG! Bài viết đã lên sóng.", state="complete", expanded=False)
     st.success(f"Đã đăng bài: {title} (ID: {new_id})")
+    
+    # Hiển thị kết quả để kiểm tra
+    st.write("dữ liệu vừa tạo:")
     st.json(new_item)
     st.balloons()
 
-# --- GIAO DIỆN FORM (CHỈ HIỆN KHI ĐÃ ĐĂNG NHẬP) ---
+# --- GIAO DIỆN FORM NHẬP LIỆU ---
 
 with st.form("radio_form"):
     col1, col2 = st.columns(2)
@@ -138,20 +164,28 @@ with st.form("radio_form"):
     
     description = st.text_input("3. Mô tả ngắn", placeholder="VD: Hướng dẫn xử lý ra hoa...")
     
-    pdf_url_input = st.text_input("4. Link tài liệu PDF (Nếu có)", placeholder="Dán link PDF từ GitHub hoặc để trống")
+    # Ô Upload file PDF
+    st.markdown("---")
+    st.write("📁 **Tài liệu đính kèm**")
+    pdf_file = st.file_uploader("4. Chọn file PDF (Nếu có)", type=["pdf"])
     
     col3, col4 = st.columns(2)
     with col3:
+        st.markdown("---")
+        st.write("🎤 **Cấu hình giọng đọc**")
         voice_options = {"Nam (Miền Nam)": "vi-VN-NamMinhNeural", "Nữ (Miền Bắc)": "vi-VN-HoaiMyNeural"}
-        voice_label = st.selectbox("5. Giọng đọc AI", list(voice_options.keys()))
+        voice_label = st.selectbox("5. Chọn giọng", list(voice_options.keys()))
         voice_code = voice_options[voice_label]
     with col4:
-        image_url = st.text_input("6. Link ảnh minh họa", placeholder="Để trống sẽ dùng ảnh mặc định")
+        st.markdown("---")
+        st.write("🖼️ **Ảnh bìa bài viết**")
+        image_file = st.file_uploader("6. Chọn ảnh (JPG/PNG)", type=["jpg", "png", "jpeg"])
 
     st.markdown("---")
     st.write("### 7. Nội dung bài viết (AI sẽ đọc nội dung này)")
     content_text = st.text_area("Dán văn bản vào đây:", height=300)
     
+    # --- KHU VỰC NÚT BẤM ---
     st.markdown("---")
     col_btn1, col_btn2 = st.columns(2)
     
@@ -161,7 +195,7 @@ with st.form("radio_form"):
     with col_btn2:
         btn_publish = st.form_submit_button("🚀 BIÊN TẬP & PHÁT SÓNG")
 
-    # Xử lý sự kiện
+    # XỬ LÝ SỰ KIỆN
     if btn_preview:
         if not content_text:
             st.warning("⚠️ Chưa có nội dung để đọc!")
@@ -170,10 +204,10 @@ with st.form("radio_form"):
             preview_file = "preview_audio.mp3"
             asyncio.run(generate_audio(content_text, preview_file, voice_code))
             st.audio(preview_file, format="audio/mp3")
-            st.success("Nghe thử ở trên. (File này chỉ là tạm thời)")
+            st.success("Nghe thử ở trên (File tạm).")
 
     if btn_publish:
         if not title or not content_text:
             st.warning("⚠️ Vui lòng nhập Tiêu đề và Nội dung!")
         else:
-            process_upload(title, category, description, pdf_url_input, content_text, voice_code, image_url)
+            process_upload(title, category, description, pdf_file, content_text, voice_code, image_file)
