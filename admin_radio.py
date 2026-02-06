@@ -8,16 +8,43 @@ import time
 from datetime import datetime
 import os
 
-# --- CẤU HÌNH ---
-st.set_page_config(page_title="Admin Radio Khuyến Nông", page_icon="🌾")
+# --- CẤU HÌNH TRANG ---
+st.set_page_config(page_title="Admin Radio Khuyến Nông", page_icon="🔒")
+
+# --- KIỂM TRA MẬT KHẨU (LOGIN SYSTEM) ---
+# Nếu chưa đăng nhập thì hiện ô nhập mật khẩu
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+def check_password():
+    try:
+        # So sánh mật khẩu nhập vào với mật khẩu trong Secrets
+        if st.session_state.password_input == st.secrets["APP_PASSWORD"]:
+            st.session_state.authenticated = True
+        else:
+            st.error("❌ Sai mật khẩu! Vui lòng thử lại.")
+    except:
+        st.error("⚠️ Chưa cấu hình APP_PASSWORD trong Settings của Streamlit.")
+
+if not st.session_state.authenticated:
+    st.title("🔒 Đăng Nhập Hệ Thống")
+    st.write("Vui lòng nhập mật khẩu quản trị để truy cập công cụ.")
+    st.text_input("Mật khẩu:", type="password", key="password_input", on_change=check_password)
+    st.stop() # Dừng lại, không chạy code bên dưới nếu chưa đăng nhập
+
+# =================================================================================
+# KHI ĐÃ ĐĂNG NHẬP THÀNH CÔNG THÌ MỚI CHẠY CODE BÊN DƯỚI
+# =================================================================================
+
 st.title("🌾 Công Cụ Sản Xuất Radio Tự Động")
+st.success("✅ Đã đăng nhập quyền Quản trị viên")
 
 # --- KẾT NỐI GITHUB ---
 try:
     GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
     REPO_NAME = "snnmt/radiokhuyennong" 
 except:
-    st.error("⚠️ Chưa cấu hình Token! Hãy vào Settings của Streamlit để thêm GITHUB_TOKEN.")
+    st.error("⚠️ Chưa cấu hình GITHUB_TOKEN! Hãy vào Settings của Streamlit để thêm.")
     st.stop()
 
 FOLDER_AUDIO = "amthanh/"
@@ -69,10 +96,8 @@ def process_upload(title, category, description, pdf_url_input, content_text, vo
         max_id = max(item.get('id', 0) for item in data_list)
         new_id = max_id + 1
 
-    # Link file âm thanh chuẩn
+    # Link chuẩn
     final_audio_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{file_path_on_git}"
-    
-    # Xử lý ảnh mặc định
     final_image_url = image_url_input if image_url_input else f"https://raw.githubusercontent.com/{REPO_NAME}/main/hinhanh/logo_mac_dinh.png"
 
     # Tạo Object mới
@@ -102,7 +127,7 @@ def process_upload(title, category, description, pdf_url_input, content_text, vo
     st.json(new_item)
     st.balloons()
 
-# --- GIAO DIỆN FORM ---
+# --- GIAO DIỆN FORM (CHỈ HIỆN KHI ĐÃ ĐĂNG NHẬP) ---
 
 with st.form("radio_form"):
     col1, col2 = st.columns(2)
@@ -127,19 +152,16 @@ with st.form("radio_form"):
     st.write("### 7. Nội dung bài viết (AI sẽ đọc nội dung này)")
     content_text = st.text_area("Dán văn bản vào đây:", height=300)
     
-    # --- KHU VỰC NÚT BẤM (Chia làm 2 cột) ---
     st.markdown("---")
     col_btn1, col_btn2 = st.columns(2)
     
     with col_btn1:
-        # Nút Nghe thử
         btn_preview = st.form_submit_button("🎧 NGHE THỬ TRƯỚC")
         
     with col_btn2:
-        # Nút Phát sóng thật
         btn_publish = st.form_submit_button("🚀 BIÊN TẬP & PHÁT SÓNG")
 
-    # --- XỬ LÝ SỰ KIỆN ---
+    # Xử lý sự kiện
     if btn_preview:
         if not content_text:
             st.warning("⚠️ Chưa có nội dung để đọc!")
@@ -147,13 +169,8 @@ with st.form("radio_form"):
             st.info("🎙️ Đang tạo bản nghe thử...")
             preview_file = "preview_audio.mp3"
             asyncio.run(generate_audio(content_text, preview_file, voice_code))
-            
-            # Hiện trình phát nhạc
             st.audio(preview_file, format="audio/mp3")
-            st.success("Bấm nút Play ở trên để nghe thử. Nếu ưng ý hãy bấm 'Phát Sóng'.")
-            
-            # Xóa file sau khi load xong (tùy chọn, streamilt có thể cần file tồn tại lúc render)
-            # os.remove(preview_file) 
+            st.success("Nghe thử ở trên. (File này chỉ là tạm thời)")
 
     if btn_publish:
         if not title or not content_text:
