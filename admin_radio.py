@@ -58,7 +58,6 @@ def get_github_repo():
     return g.get_repo(REPO_NAME)
 
 async def generate_audio(text, filename, voice, rate):
-    # rate string ví dụ: "+0%", "+10%", "-10%"
     communicate = edge_tts.Communicate(text, voice, rate=rate)
     await communicate.save(filename)
 
@@ -92,108 +91,104 @@ def push_json_to_github(data_list, sha, message):
 tab1, tab2 = st.tabs(["➕ ĐĂNG BÀI MỚI", "🛠️ QUẢN LÝ & CHỈNH SỬA"])
 
 # =================================================================================
-# TAB 1: ĐĂNG BÀI MỚI
+# TAB 1: ĐĂNG BÀI MỚI (Đã bỏ Form để tương tác nhanh hơn)
 # =================================================================================
 with tab1:
     st.subheader("Soạn Thảo Bài Viết Mới")
-    with st.form("new_post_form"):
-        # 1. THÔNG TIN CƠ BẢN
-        c1, c2 = st.columns(2)
-        with c1:
-            title = st.text_input("Tiêu đề bài viết")
-            category = st.selectbox("Chuyên mục", ["Trồng trọt", "Chăn nuôi", "Thủy sản", "Giá cả", "Tin tức"])
-        with c2:
-            description = st.text_input("Mô tả ngắn")
-            pdf_file = st.file_uploader("File PDF (nếu có)", type=["pdf"])
+    
+    # 1. THÔNG TIN CƠ BẢN
+    c1, c2 = st.columns(2)
+    with c1:
+        title = st.text_input("Tiêu đề bài viết")
+        category = st.selectbox("Chuyên mục", ["Trồng trọt", "Chăn nuôi", "Thủy sản", "Giá cả", "Tin tức"])
+    with c2:
+        description = st.text_input("Mô tả ngắn")
+        pdf_file = st.file_uploader("File PDF (nếu có)", type=["pdf"])
 
-        st.markdown("---")
-        
-        # 2. CHỌN NGUỒN ÂM THANH
-        st.write("🎙️ **Cấu hình Âm thanh & Hình ảnh**")
-        
-        # Tùy chọn nguồn âm thanh
-        audio_source = st.radio("Chọn nguồn âm thanh:", ["🎙️ Tạo từ văn bản (AI)", "📁 Tải file có sẵn từ máy"], horizontal=True)
-        
-        content_text = ""
-        uploaded_audio = None
-        voice_code = "vi-VN-NamMinhNeural"
-        speed_rate = "+0%"
-        
-        col_audio, col_image = st.columns([2, 1])
-        
-        with col_audio:
-            if audio_source == "🎙️ Tạo từ văn bản (AI)":
-                c_voice, c_speed = st.columns(2)
-                with c_voice:
-                    voice_opts = {"Nam (Miền Nam)": "vi-VN-NamMinhNeural", "Nữ (Miền Bắc)": "vi-VN-HoaiMyNeural"}
-                    voice_label = st.selectbox("Giọng đọc:", list(voice_opts.keys()))
-                    voice_code = voice_opts[voice_label]
-                with c_speed:
-                    speed_opts = {
-                        "Bình thường (+0%)": "+0%",
-                        "Hơi nhanh - Tin tức (+10%)": "+10%", 
-                        "Nhanh - Khẩn cấp (+20%)": "+20%",
-                        "Chậm - Kể chuyện (-10%)": "-10%"
-                    }
-                    speed_label = st.selectbox("Tốc độ đọc:", list(speed_opts.keys()), index=0)
-                    speed_rate = speed_opts[speed_label]
-                
-                content_text = st.text_area("Nội dung bài viết (AI sẽ đọc nội dung này):", height=200, placeholder="Dán văn bản vào đây...")
+    st.markdown("---")
+    
+    # 2. CHỌN NGUỒN ÂM THANH
+    st.write("🎙️ **Cấu hình Âm thanh & Hình ảnh**")
+    
+    # Radio button nằm ngoài form sẽ kích hoạt load lại trang ngay lập tức khi chọn
+    audio_source_options = ["🎙️ Tạo từ văn bản (AI)", "📁 Tải file có sẵn từ máy"]
+    audio_source = st.radio("Chọn nguồn âm thanh:", audio_source_options, horizontal=True)
+    
+    content_text = ""
+    uploaded_audio = None
+    voice_code = "vi-VN-NamMinhNeural"
+    speed_rate = "+0%"
+    
+    col_audio, col_image = st.columns([2, 1])
+    
+    with col_audio:
+        # LOGIC HIỂN THỊ ĐỘNG
+        if audio_source == audio_source_options[0]: # Chọn AI
+            c_voice, c_speed = st.columns(2)
+            with c_voice:
+                voice_opts = {"Nam (Miền Nam)": "vi-VN-NamMinhNeural", "Nữ (Miền Bắc)": "vi-VN-HoaiMyNeural"}
+                voice_label = st.selectbox("Giọng đọc:", list(voice_opts.keys()))
+                voice_code = voice_opts[voice_label]
+            with c_speed:
+                speed_opts = {
+                    "Bình thường (+0%)": "+0%",
+                    "Hơi nhanh - Tin tức (+10%)": "+10%", 
+                    "Nhanh - Khẩn cấp (+20%)": "+20%",
+                    "Chậm - Kể chuyện (-10%)": "-10%"
+                }
+                speed_label = st.selectbox("Tốc độ đọc:", list(speed_opts.keys()), index=0)
+                speed_rate = speed_opts[speed_label]
             
-            else: # Nếu chọn Tải file
-                st.info("Chế độ: Upload file âm thanh có sẵn (MP3, WAV, M4A)")
-                uploaded_audio = st.file_uploader("Chọn file âm thanh:", type=["mp3", "wav", "m4a"])
-                # Vẫn hiện ô text để nhập nội dung lưu trữ (nếu muốn), nhưng không bắt buộc để tạo audio
-                content_text = st.text_area("Nội dung văn bản (Để lưu trữ, không bắt buộc):", height=100)
-
-        with col_image:
-            image_file = st.file_uploader("Ảnh bìa (JPG/PNG)", type=["jpg", "png", "jpeg"])
-
-        # --- KHU VỰC NÚT BẤM ---
-        st.markdown("---")
-        col_btn1, col_btn2 = st.columns(2)
+            content_text = st.text_area("Nội dung bài viết (AI sẽ đọc nội dung này):", height=200, placeholder="Dán văn bản vào đây...")
         
-        with col_btn1:
-            btn_preview = st.form_submit_button("🎧 NGHE THỬ / KIỂM TRA")
-        
-        with col_btn2:
-            btn_submit = st.form_submit_button("🚀 PHÁT SÓNG NGAY")
+        else: # Chọn Tải file
+            st.info("📂 Chế độ: Upload file âm thanh có sẵn")
+            # Hiện ô upload file ngay lập tức
+            uploaded_audio = st.file_uploader("Chọn file âm thanh (MP3/WAV/M4A):", type=["mp3", "wav", "m4a"])
+            content_text = st.text_area("Nội dung văn bản (Để lưu trữ, không bắt buộc):", height=100)
 
-        # --- XỬ LÝ SỰ KIỆN ---
-        
-        if btn_preview:
-            if audio_source == "🎙️ Tạo từ văn bản (AI)":
+    with col_image:
+        image_file = st.file_uploader("Ảnh bìa (JPG/PNG)", type=["jpg", "png", "jpeg"])
+
+    # --- KHU VỰC NÚT BẤM (Dùng st.button thường) ---
+    st.markdown("---")
+    col_btn1, col_btn2 = st.columns(2)
+    
+    with col_btn1:
+        # Nút nghe thử
+        if st.button("🎧 NGHE THỬ / KIỂM TRA"):
+            if audio_source == audio_source_options[0]: # AI
                 if not content_text:
                     st.warning("⚠️ Chưa có nội dung văn bản để đọc!")
                 else:
-                    st.info(f"🎙️ Đang tạo bản nghe thử ({voice_label} - {speed_label})...")
+                    st.info(f"🎙️ Đang tạo bản nghe thử ({voice_label})...")
                     preview_filename = "preview_temp.mp3"
                     asyncio.run(generate_audio(content_text, preview_filename, voice_code, speed_rate))
-                    
                     with open(preview_filename, "rb") as f:
-                        audio_bytes = f.read()
-                    st.audio(audio_bytes, format="audio/mp3")
+                        st.audio(f.read(), format="audio/mp3")
                     st.success("Nghe thử AI ở trên.")
                     os.remove(preview_filename)
-            else:
+            else: # File Upload
                 if not uploaded_audio:
                     st.warning("⚠️ Chưa chọn file âm thanh!")
                 else:
                     st.audio(uploaded_audio)
-                    st.success("File âm thanh của bạn đã sẵn sàng.")
+                    st.success("File âm thanh chuẩn bị upload.")
 
-        if btn_submit:
+    with col_btn2:
+        # Nút phát sóng
+        if st.button("🚀 PHÁT SÓNG NGAY", type="primary"):
             # Kiểm tra đầu vào
             valid = True
             if not title:
                 st.warning("⚠️ Thiếu tiêu đề!")
                 valid = False
             
-            if audio_source == "🎙️ Tạo từ văn bản (AI)" and not content_text:
+            if audio_source == audio_source_options[0] and not content_text:
                 st.warning("⚠️ Thiếu nội dung văn bản để AI đọc!")
                 valid = False
                 
-            if audio_source == "📁 Tải file có sẵn từ máy" and not uploaded_audio:
+            if audio_source == audio_source_options[1] and not uploaded_audio:
                 st.warning("⚠️ Chưa upload file âm thanh!")
                 valid = False
 
@@ -206,24 +201,18 @@ with tab1:
                 final_pdf = upload_file_to_github(pdf_file, FOLDER_DOCS, repo) if pdf_file else ""
                 final_img = upload_file_to_github(image_file, FOLDER_IMAGE, repo) if image_file else f"https://raw.githubusercontent.com/{REPO_NAME}/main/hinhanh/logo_mac_dinh.png"
                 
-                # 2. Xử lý Âm thanh (AI hoặc File Upload)
+                # 2. Xử lý Âm thanh
                 status.write("Xử lý âm thanh...")
-                
-                # Tên file chung (để tránh trùng)
                 timestamp = int(time.time())
-                fname_mp3 = f"radio_{timestamp}.mp3"
                 
-                if audio_source == "🎙️ Tạo từ văn bản (AI)":
-                    # Tạo từ AI
+                if audio_source == audio_source_options[0]: # AI
+                    fname_mp3 = f"radio_{timestamp}.mp3"
                     asyncio.run(generate_audio(content_text, fname_mp3, voice_code, speed_rate))
                     with open(fname_mp3, "rb") as f:
                         audio_content = f.read()
-                    os.remove(fname_mp3) # Xóa file tạm local
-                else:
-                    # Lấy từ file upload
+                    os.remove(fname_mp3)
+                else: # File Upload
                     audio_content = uploaded_audio.getvalue()
-                    # Nếu file upload không phải mp3 (vd wav), ta vẫn đặt đuôi mp3 hoặc giữ nguyên đuôi gốc
-                    # Ở đây ta giữ nguyên đuôi gốc cho an toàn
                     ext = uploaded_audio.name.split(".")[-1]
                     fname_mp3 = f"radio_{timestamp}.{ext}"
 
